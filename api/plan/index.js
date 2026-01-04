@@ -1,4 +1,3 @@
-
 const fetch = global.fetch;
 
 function requireEnv(name) {
