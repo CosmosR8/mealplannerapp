@@ -4,10 +4,10 @@
 // We'll call a SWA serverless proxy at /api/plan instead.
 
 window.MEALPLANNER_CONFIG = {
-  // ✅ Your Foundry PROJECT endpoint (keep the /api/projects/<projectName>)
+  // Your Foundry PROJECT endpoint (keep the /api/projects/<projectName>)
   endpoint: "https://mealplanneragent-resource.services.ai.azure.com/api/projects/mealplanneragent",
 
-  // ✅ Your Agent ID from Foundry UI
+  // Your Agent ID from Foundry UI
   agentId: "agt_Sf3iR05Q8M3y0djsbAYwKk2W",
 
   amazonAffiliateTag: "r8life-20",
