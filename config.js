@@ -1,18 +1,14 @@
 
 // IMPORTANT: Do NOT commit real keys to source control.
-// For Azure Static Web Apps, prefer environment variables or a server-side proxy.
-// For your v1 quick test, paste your key locally before uploading.
+// Agents data plane uses Entra ID; do not call it directly from browser.
+// We'll call a SWA serverless proxy at /api/plan instead.
 
 window.MEALPLANNER_CONFIG = {
-  // ✅ Correct for current Azure AI Foundry Projects/Agents:
-  // Base resource endpoint ONLY (NO /api/projects/... suffix)
-  endpoint: "https://mealplanneragent-resource.services.ai.azure.com",
+  // ✅ Your Foundry PROJECT endpoint (keep the /api/projects/<projectName>)
+  endpoint: "https://mealplanneragent-resource.services.ai.azure.com/api/projects/mealplanneragent",
 
-  // ✅ Add your Foundry Agent ID (from your Agents screen)
+  // ✅ Your Agent ID from Foundry UI
   agentId: "agt_Sf3iR05Q8M3y0djsbAYwKk2W",
-
-  // 🔐 Paste your key here ONLY for quick testing (avoid committing this)
-  apiKey: "PASTE_YOUR_FOUNDRY_KEY_HERE",
 
   amazonAffiliateTag: "r8life-20",
 
