@@ -4,7 +4,7 @@
 
 window.MEALPLANNER_CONFIG = {
   endpoint: "https://mealplanneragent-resource.services.ai.azure.com/api/projects/mealplanneragent",
-  apiKey: OVg4aBkwZDjopXsfXxleFVX676rA50Au6XwEsq8gK3yjCwzCUJVmJQQJ99BLACHYHv6XJ3w3AAAAACOGlmoH,
+  apiKey: "OVg4aBkwZDjopXsfXxleFVX676rA50Au6XwEsq8gK3yjCwzCUJVmJQQJ99BLACHYHv6XJ3w3AAAAACOGlmoH",
   amazonAffiliateTag: "r8life-20",
   starterCartItems: [
     { asin: "B07CVZRZTC", qty: 1 },
