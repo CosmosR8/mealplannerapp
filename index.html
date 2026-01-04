@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meal Planner • 7‑Day</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">🍽️</div>
+      <div>
+        <h1>Meal Planner</h1>
+        <p class="subtitle">High‑protein • ≤10‑minute prep • Amazon cart</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="btnIngredients" class="btn secondary">Ingredients & Brands</button>
+      <a class="btn secondary" href="#grocery">View Grocery List</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Inputs</h2>
+      <form id="plannerForm" class="grid">
+        <label>Weight (lbs)
+          <input type="number" id="weight" min="50" max="600" step="1" placeholder="e.g., 185" required />
+        </label>
+        <label>Target calories/day
+          <input type="number" id="calories" min="1200" max="6000" step="10" placeholder="e.g., 2200" required />
+        </label>
+        <label>Start date
+          <input type="date" id="startDate" required />
+        </label>
+        <label>Variety
+          <select id="variety">
+            <option value="variety" selected>Variety (no repeats within 3 days)</option>
+            <option value="simple">Simple (repeats allowed)</option>
+          </select>
+        </label>
+        <label class="span2">Allergies (comma‑separated)
+          <input type="text" id="allergies" placeholder="e.g., peanuts, dairy" />
+        </label>
+        <label class="span2">Avoid items (comma‑separated)
+          <input type="text" id="avoid" placeholder="e.g., seafood, mushrooms" value="seafood" />
+        </label>
+
+        <div class="row span2">
+          <label class="toggle">
+            <input type="checkbox" id="reuseLastWeek" />
+            <span>Reuse last week’s plan (if available)</span>
+          </label>
+        </div>
+
+        <div class="row span2">
+          <button id="btnGenerate" class="btn primary" type="submit">Generate Meal Plan</button>
+          <button id="btnStop" class="btn danger" type="button" disabled>Stop</button>
+          <span id="status" class="status"></span>
+        </div>
+      </form>
+
+      <details class="disclosure">
+        <summary>Affiliate disclosure</summary>
+        <p>As an Amazon Associate, we earn from qualifying purchases. This app may include affiliate links.</p>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="cardHeader">
+        <h2>7‑Day Plan</h2>
+        <button id="btnCopy" class="btn secondary" disabled>Copy plan</button>
+      </div>
+      <div id="output" class="output"><p class="muted">Generate a plan to see results here.</p></div>
+      <div class="row">
+        <a id="btnAmazonCart" class="btn amazon" href="#" target="_blank" rel="noopener" disabled>Add to Amazon Cart</a>
+      </div>
+    </section>
+
+    <section class="card" id="grocery">
+      <h2>Grocery List</h2>
+      <div id="groceryList" class="output"><p class="muted">Your grocery list will appear after generation.</p></div>
+    </section>
+
+    <footer class="footer"><p class="muted">v1 • Curated pantry • No seafood by default</p></footer>
+  </main>
+
+  <dialog id="ingredientsModal" class="modal">
+    <div class="modalBody">
+      <div class="modalHeader">
+        <h3>Approved Ingredients & Brands</h3>
+        <button id="btnCloseModal" class="btn secondary" type="button">Close</button>
+      </div>
+      <div id="ingredientsContent" class="ingredients"></div>
+    </div>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
