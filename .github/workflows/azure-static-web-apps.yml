@@ -1,3 +1,4 @@
+
 name: Azure Static Web Apps CI/CD
 
 on:
@@ -24,8 +25,8 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
 
-          # FIXED
-          app_location: "/"
+          # IMPORTANT SETTINGS
+          app_location: "/" 
           api_location: "api"
           output_location: ""
 
