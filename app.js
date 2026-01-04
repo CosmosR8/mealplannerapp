@@ -1,4 +1,4 @@
-(function(){
+ (function(){
   const $ = (id) => document.getElementById(id);
   const cfg = window.MEALPLANNER_CONFIG;
   const form = $('plannerForm');
@@ -161,10 +161,10 @@
     localStorage.setItem(STORAGE_KEY_GROCERY, groceryText || '');
   }
 
-  function validateConfig(){
-    if (!cfg || !cfg.endpoint) throw new Error('Missing endpoint in config.js');
-    if (!cfg.apiKey || cfg.apiKey.includes('YOUR_FULL_API_KEY_HERE')) throw new Error('Paste your full API key into config.js before upload.');
-  }
+function validateConfig(){
+  if (!cfg || !cfg.endpoint) throw new Error('Missing endpoint in config.js');
+  if (!cfg.agentId) throw new Error('Missing agentId in config.js');
+}
 
   function setGenerating(on){
     $('btnGenerate').disabled = on;
