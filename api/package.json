@@ -1,0 +1,10 @@
+{
+  "name": "meal-planner-api",
+  "version": "1.0.0",
+  "description": "Backend for Meal Planner App",
+  "main": "plan/index.js",
+  "dependencies": {
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {}
+}
