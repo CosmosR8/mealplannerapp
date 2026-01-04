@@ -4,10 +4,11 @@
 // For your v1 quick test, paste your key locally before uploading.
 
 window.MEALPLANNER_CONFIG = {
-  // ✅ Correct for 2026 Foundry: base resource endpoint only (NO /api/projects/...)
+  // ✅ Correct for current Azure AI Foundry Projects/Agents:
+  // Base resource endpoint ONLY (NO /api/projects/... suffix)
   endpoint: "https://mealplanneragent-resource.services.ai.azure.com",
 
-  // ✅ Your Foundry Agent ID (from your screenshot)
+  // ✅ Add your Foundry Agent ID (from your Agents screen)
   agentId: "agt_Sf3iR05Q8M3y0djsbAYwKk2W",
 
   // 🔐 Paste your key here ONLY for quick testing (avoid committing this)
@@ -39,7 +40,6 @@ window.MEALPLANNER_CONFIG = {
       "Whey protein powder (e.g., ON Whey 2 lb, ASIN B085RXTP7V)",
       "Black beans (e.g., Goya, ASIN B000VDV1UO)"
     ],
-
     "Carbs / Starches": [
       "Microwavable rice cups",
       "Brown rice (Lundberg, ASIN B00N7JY5WK)",
@@ -47,7 +47,6 @@ window.MEALPLANNER_CONFIG = {
       "Russet potatoes (ASIN B07XW1TNXZ)",
       "Oats (Quaker, ASIN B07CVZRZTC)"
     ],
-
     "Veggies & Fruits": [
       "Frozen broccoli (365, ASIN B074H4SHGV)",
       "Frozen mixed / stir-fry vegetables",
@@ -55,7 +54,6 @@ window.MEALPLANNER_CONFIG = {
       "Frozen berries",
       "Bananas / apples / pineapple cups"
     ],
-
     "Sauces & Misc": [
       "Marinara (Rao’s, ASIN B0FBZHW4MB)",
       "Honey (Nature Nate’s, ASIN B00CMQD3TA)",
@@ -63,7 +61,6 @@ window.MEALPLANNER_CONFIG = {
       "Olive oil spray",
       "Seasoning blends"
     ],
-
     "Snacks / Drinks": [
       "Almonds (Blue Diamond, ASIN B001XUPH6I)",
       "Greek yogurt cups",
