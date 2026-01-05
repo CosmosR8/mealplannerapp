@@ -1,4 +1,4 @@
- 
+
 (function () {
   const $ = (id) => document.getElementById(id);
   const cfg = window.MEALPLANNER_CONFIG;
@@ -82,12 +82,12 @@
     return Array.from(counts.entries()).map(([asin, qty]) => ({ asin, qty }));
   }
 
-  // ✅ NEW: call the SWA Function proxy (NOT Foundry directly)
+  // ✅ UPDATED: call SWA Function proxy; send only the prompt
   async function runPlanner(userText) {
     const payload = {
       prompt: userText,
-      endpoint: cfg.endpoint, // Foundry PROJECT endpoint (includes /api/projects/<project>)
-      agentId: cfg.agentId,   // your agent id
+      // IMPORTANT: do NOT send endpoint/agentId from the browser.
+      // Backend should use environment variables for PROJECT_ENDPOINT + AGENT_ID.
     };
 
     setStatus("Calling /api/plan…");
@@ -99,7 +99,13 @@
       signal: abort.signal,
     });
 
+    // Always read response body and log it for debugging
     const raw = await res.text();
+
+    console.groupCollapsed(`[api/plan] ${res.status} ${res.ok ? "OK" : "FAIL"}`);
+    console.log("raw response:", raw);
+    console.groupEnd();
+
     let json;
     try {
       json = raw ? JSON.parse(raw) : {};
@@ -171,8 +177,8 @@
   }
 
   function validateConfig() {
-    if (!cfg || !cfg.endpoint) throw new Error("Missing endpoint in config.js");
-    if (!cfg.agentId) throw new Error("Missing agentId in config.js");
+    // Config no longer needs endpoint/agentId for runtime calls
+    if (!cfg) throw new Error("Missing MEALPLANNER_CONFIG in config.js");
   }
 
   function setGenerating(on) {
@@ -216,11 +222,12 @@
       setStatus("Done");
     } catch (err) {
       console.error(err);
-      const msg = err?.name === "AbortError"
-        ? "Request cancelled."
-        : String(err?.message || err);
+      const msg =
+        err?.name === "AbortError" ? "Request cancelled." : String(err?.message || err);
 
-      out.innerHTML = `<p class="muted">Error:</p><pre style="white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
+      out.innerHTML = `<p class="muted">Error:</p><pre style="white-space:pre-wrap">${escapeHtml(
+        msg
+      )}</pre>`;
       groceryOut.innerHTML = '<p class="muted">—</p>';
       setStatus("");
     } finally {
