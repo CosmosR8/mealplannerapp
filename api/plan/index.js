@@ -1,7 +1,8 @@
+
 // api/plan/index.js
 // Azure Static Web Apps Functions (Node 18+ classic model)
 // POST /api/plan -> calls Azure AI Foundry Agents (Threads/Messages/Runs v1)
-// Always returns JSON so Network->Response is never blank.
+// Always returns JSON; includes stage + URL diagnostics if any step fails.
 
 const { setTimeout: sleep } = require("timers/promises");
 
@@ -96,11 +97,7 @@ function normalizeEndpoint(url) {
   return s.endsWith("/api") ? s.slice(0, -4) : s;
 }
 
-/**
- * Sanitize PROJECT_ID:
- * - If an ARM path was pasted (starts with /subscriptions/.../projects/<id>), extract <id>
- * - If it contains slashes, take the last meaningful segment
- */
+/** Sanitize PROJECT_ID (handles ARM paths and URLs) */
 function sanitizeProjectId(pid) {
   const s = String(pid || "").trim();
   if (!s) return s;
@@ -146,8 +143,13 @@ async function waitForRunCompletion({ headers, baseUrl, projectId, threadId, run
 }
 
 module.exports = async function (context, req) {
+  // track which stage fails
+  let stage = "init";
+  let urlInfo = null;
+
   try {
-    // 1) Parse the incoming body (string or object)
+    // 1) Parse incoming body (string or object)
+    stage = "parse_body";
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
     const prompt = body.prompt || body.input || body.text || "";
     if (!prompt || typeof prompt !== "string") {
@@ -160,6 +162,7 @@ module.exports = async function (context, req) {
     }
 
     // 2) Read configuration from environment
+    stage = "read_env";
     const apiKey = process.env.FOUNDRY_API_KEY; // preferred path
     const tenantId = process.env.AZURE_TENANT_ID;
     const clientId = process.env.AZURE_CLIENT_ID;
@@ -175,7 +178,6 @@ module.exports = async function (context, req) {
     if (!projectId)      missing.push("PROJECT_ID");
     if (!agentId)        missing.push("AGENT_ID");
 
-    // For Entra path, these are required; for API Key path, they are not.
     const usingApiKey = Boolean(apiKey);
     if (!usingApiKey) {
       if (!tenantId)     missing.push("AZURE_TENANT_ID");
@@ -193,6 +195,7 @@ module.exports = async function (context, req) {
     }
 
     // 3) Build headers for Foundry
+    stage = "build_headers";
     let headers = { "Content-Type": "application/json", "Accept": "application/json" };
     if (usingApiKey) {
       headers["api-key"] = apiKey; // Foundry project API key
@@ -202,29 +205,31 @@ module.exports = async function (context, req) {
     }
 
     // ---- DEBUG (no secrets) ----
-    const createThreadUrl =
-      `${projectEndpoint}/openai/agents/v1/projects/${projectId}/threads?api-version=2024-05-01-preview`;
-
     context.log("DEBUG Foundry config", {
       endpoint: projectEndpoint,
       projectId,
       agentId: agentId ? (agentId.slice(0, 8) + "...") : null,
       usingApiKey
     });
-    context.log("DEBUG createThreadUrl", createThreadUrl);
 
     // 4) Create a thread
+    stage = "create_thread";
+    const createThreadUrl = `${projectEndpoint}/openai/agents/v1/projects/${projectId}/threads?api-version=2024-05-01-preview`;
+    urlInfo = createThreadUrl;
+    context.log("DEBUG createThreadUrl", createThreadUrl);
+
     const threadRes = await fetch(createThreadUrl, { method: "POST", headers, body: JSON.stringify({}) });
     const { json: threadJson, raw: threadRaw } = await safeJson(threadRes);
     if (!threadRes.ok) {
-      // Bubble up clean error with URL context (no secrets)
       throw new Error(`Create thread failed (${threadRes.status}): ${threadRaw || threadRes.statusText}`);
     }
     const threadId = threadJson?.id;
     if (!threadId) throw new Error(`Create thread missing id. Raw: ${threadRaw || "(empty)"}`);
 
     // 5) Add user message
+    stage = "add_message";
     const msgUrl = `${projectEndpoint}/openai/agents/v1/projects/${projectId}/threads/${threadId}/messages?api-version=2024-05-01-preview`;
+    urlInfo = msgUrl;
     const msgRes = await fetch(msgUrl, { method: "POST", headers, body: JSON.stringify({ role: "user", content: prompt }) });
     const { raw: msgRaw } = await safeJson(msgRes);
     if (!msgRes.ok) {
@@ -232,7 +237,9 @@ module.exports = async function (context, req) {
     }
 
     // 6) Create run
+    stage = "create_run";
     const runUrl = `${projectEndpoint}/openai/agents/v1/projects/${projectId}/threads/${threadId}/runs?api-version=2024-05-01-preview`;
+    urlInfo = runUrl;
     const runRes = await fetch(runUrl, { method: "POST", headers, body: JSON.stringify({ agent_id: agentId }) });
     const { json: runJson, raw: runRaw } = await safeJson(runRes);
     if (!runRes.ok) {
@@ -242,6 +249,7 @@ module.exports = async function (context, req) {
     if (!runId) throw new Error(`Create run missing id. Raw: ${runRaw || "(empty)"}`);
 
     // 7) Wait for completion
+    stage = "poll_run";
     const finalRun = await waitForRunCompletion({ headers, baseUrl: projectEndpoint, projectId, threadId, runId });
     if (finalRun?.status !== "completed") {
       const errMsg = finalRun?.last_error?.message || finalRun?.error?.message || `Run ended with status: ${finalRun?.status}`;
@@ -249,7 +257,9 @@ module.exports = async function (context, req) {
     }
 
     // 8) List messages and extract assistant text
+    stage = "list_messages";
     const listMsgUrl = `${projectEndpoint}/openai/agents/v1/projects/${projectId}/threads/${threadId}/messages?api-version=2024-05-01-preview`;
+    urlInfo = listMsgUrl;
     const listRes = await fetch(listMsgUrl, { headers });
     const { json: listJson, raw: listRaw } = await safeJson(listRes);
     if (!listRes.ok) {
@@ -259,18 +269,23 @@ module.exports = async function (context, req) {
     const text = extractAssistantText(messages);
     if (!text) throw new Error("No assistant text found in messages response.");
 
-    // 9) Respond (use context.res!)
+    // 9) Respond
+    stage = "done";
     context.res = {
       status: 200,
       headers: { "Content-Type": "application/json" },
       body: { text }
     };
   } catch (err) {
-    context.log.error("ERROR in /api/plan:", err);
+    context.log.error("ERROR in /api/plan:", { stage, url: urlInfo, err });
     context.res = {
       status: 500,
       headers: { "Content-Type": "application/json" },
-      body: { error: err?.message || String(err), stack: err?.stack || null }
+      body: {
+        error: err?.message || String(err),
+        stage,
+        url: urlInfo || null
+      }
     };
   }
 };
