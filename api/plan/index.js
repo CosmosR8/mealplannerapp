@@ -64,7 +64,7 @@ function extractAssistantText(messages) {
   return out.trim();
 }
 
-/** Entra client_credentials token for Azure AI Services scope */
+/** Entra client_credentials token for Azure AI Services scope (fallback only) */
 async function getToken({ tenantId, clientId, clientSecret }) {
   const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
 
@@ -96,6 +96,28 @@ function normalizeEndpoint(url) {
   return s.endsWith("/api") ? s.slice(0, -4) : s;
 }
 
+/**
+ * Sanitize PROJECT_ID:
+ * - If an ARM path was pasted (starts with /subscriptions/.../projects/<id>), extract <id>
+ * - If it contains slashes, take the last meaningful segment
+ */
+function sanitizeProjectId(pid) {
+  const s = String(pid || "").trim();
+  if (!s) return s;
+
+  // Try to extract after "/projects/"
+  const m = s.match(/\/projects\/([^\/\?\s]+)/i);
+  if (m && m[1]) return m[1];
+
+  // If it's an ARM-like path, take last segment
+  if (s.startsWith("/")) {
+    const parts = s.split("/").filter(Boolean);
+    return parts[parts.length - 1];
+  }
+
+  return s; // already a short id, e.g., "mealplanneragent"
+}
+
 /** Poll a run until it reaches a terminal state */
 async function waitForRunCompletion({ headers, baseUrl, projectId, threadId, runId }) {
   const maxMs = Number(process.env.RUN_POLL_TIMEOUT_MS || 120000); // 2 min default
@@ -125,7 +147,7 @@ async function waitForRunCompletion({ headers, baseUrl, projectId, threadId, run
 
 module.exports = async function (context, req) {
   try {
-    // 1) Parse the incoming body
+    // 1) Parse the incoming body (string or object)
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
     const prompt = body.prompt || body.input || body.text || "";
     if (!prompt || typeof prompt !== "string") {
@@ -138,14 +160,14 @@ module.exports = async function (context, req) {
     }
 
     // 2) Read configuration from environment
-    const apiKey = process.env.FOUNDRY_API_KEY; // easiest path
+    const apiKey = process.env.FOUNDRY_API_KEY; // preferred path
     const tenantId = process.env.AZURE_TENANT_ID;
     const clientId = process.env.AZURE_CLIENT_ID;
     const clientSecret = process.env.AZURE_CLIENT_SECRET;
 
     // Project settings (from Foundry)
     const projectEndpoint = normalizeEndpoint(process.env.PROJECT_ENDPOINT);
-    const projectId = process.env.PROJECT_ID;
+    const projectId = sanitizeProjectId(process.env.PROJECT_ID);
     const agentId = process.env.AGENT_ID;
 
     const missing = [];
@@ -156,8 +178,8 @@ module.exports = async function (context, req) {
     // For Entra path, these are required; for API Key path, they are not.
     const usingApiKey = Boolean(apiKey);
     if (!usingApiKey) {
-      if (!tenantId)    missing.push("AZURE_TENANT_ID");
-      if (!clientId)    missing.push("AZURE_CLIENT_ID");
+      if (!tenantId)     missing.push("AZURE_TENANT_ID");
+      if (!clientId)     missing.push("AZURE_CLIENT_ID");
       if (!clientSecret) missing.push("AZURE_CLIENT_SECRET");
     }
 
@@ -171,7 +193,7 @@ module.exports = async function (context, req) {
     }
 
     // 3) Build headers for Foundry
-    let headers = { "Content-Type": "application/json" };
+    let headers = { "Content-Type": "application/json", "Accept": "application/json" };
     if (usingApiKey) {
       headers["api-key"] = apiKey; // Foundry project API key
     } else {
@@ -179,11 +201,23 @@ module.exports = async function (context, req) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
+    // ---- DEBUG (no secrets) ----
+    const createThreadUrl =
+      `${projectEndpoint}/openai/agents/v1/projects/${projectId}/threads?api-version=2024-05-01-preview`;
+
+    context.log("DEBUG Foundry config", {
+      endpoint: projectEndpoint,
+      projectId,
+      agentId: agentId ? (agentId.slice(0, 8) + "...") : null,
+      usingApiKey
+    });
+    context.log("DEBUG createThreadUrl", createThreadUrl);
+
     // 4) Create a thread
-    const createThreadUrl = `${projectEndpoint}/openai/agents/v1/projects/${projectId}/threads?api-version=2024-05-01-preview`;
     const threadRes = await fetch(createThreadUrl, { method: "POST", headers, body: JSON.stringify({}) });
     const { json: threadJson, raw: threadRaw } = await safeJson(threadRes);
     if (!threadRes.ok) {
+      // Bubble up clean error with URL context (no secrets)
       throw new Error(`Create thread failed (${threadRes.status}): ${threadRaw || threadRes.statusText}`);
     }
     const threadId = threadJson?.id;
