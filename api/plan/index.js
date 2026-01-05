@@ -1,120 +1,105 @@
-const fetch = global.fetch;
+// api/plan/index.js
+// Azure Static Web Apps Function (Node 18+)
+// Purpose: POST /api/plan -> calls Azure AI Foundry Agents (Threads/Messages/Runs v1) using Entra client_credentials
+// Returns: { text: "..." } always (or a helpful error message)
 
-function requireEnv(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var: ${name}`);
-  return v;
+const { setTimeout: sleep } = require("timers/promises");
+
+// Node 18 has fetch built-in. If not available (rare), you'd need a polyfill.
+const hasFetch = typeof fetch === "function";
+
+/**
+ * Helper: safe JSON parse
+ */
+async function safeJson(res) {
+  const txt = await res.text();
+  try {
+    return { json: JSON.parse(txt), raw: txt };
+  } catch {
+    return { json: null, raw: txt };
+  }
 }
 
-async function getToken() {
-  const tenantId = requireEnv("AZURE_TENANT_ID");
-  const clientId = requireEnv("AZURE_CLIENT_ID");
-  const clientSecret = requireEnv("AZURE_CLIENT_SECRET");
+/**
+ * Helper: extract assistant text from messages (handles multiple schemas)
+ */
+function extractAssistantText(messages) {
+  let out = "";
 
+  for (const msg of messages || []) {
+    if (msg?.role !== "assistant") continue;
+
+    // Common pattern: msg.content is an array of blocks
+    const content = msg.content;
+
+    // If content is an array, walk blocks
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!block) continue;
+
+        // Newer schema patterns:
+        // block = { type: "text", text: "..." }
+        if (block.type === "text" && typeof block.text === "string") {
+          out += block.text;
+          continue;
+        }
+
+        // Some services: { type: "output_text", text: "..." }
+        if (block.type === "output_text" && typeof block.text === "string") {
+          out += block.text;
+          continue;
+        }
+
+        // Older OpenAI-style: { type: "text", text: { value: "..." } }
+        if (block.type === "text" && block.text && typeof block.text.value === "string") {
+          out += block.text.value;
+          continue;
+        }
+
+        // Sometimes: { text: { value } } without type
+        if (block.text && typeof block.text.value === "string") {
+          out += block.text.value;
+          continue;
+        }
+      }
+      continue;
+    }
+
+    // Sometimes content is already a string
+    if (typeof content === "string") {
+      out += content;
+    }
+  }
+
+  return out.trim();
+}
+
+/**
+ * Helper: get Entra token via client_credentials
+ */
+async function getToken({ tenantId, clientId, clientSecret }) {
   const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+
   const body = new URLSearchParams();
   body.set("client_id", clientId);
   body.set("client_secret", clientSecret);
+
+  // Most Azure services accept this scope for client_credentials tokens.
+  // If your tenant requires a different scope for this resource, errors will show clearly now.
+  body.set("scope", "https://cognitiveservices.azure.com/.default");
   body.set("grant_type", "client_credentials");
-  body.set("scope", "https://ai.azure.com/.default");
 
   const res = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body
+    body,
   });
 
-  const json = await res.json();
-  if (!res.ok) throw new Error(`Token error ${res.status}: ${JSON.stringify(json)}`);
-  return json.access_token;
-}
-
-async function foundryFetch(projectEndpoint, token, path, options = {}) {
-  // IMPORTANT: correct query delimiter + api-version required for these endpoints
-  const url =
-    projectEndpoint.replace(/\/$/, "") +
-    path +
-    (path.includes("?") ? "&" : "?") +
-    "api-version=v1";
-
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${token}`,
-    ...(options.headers || {})
-  };
-
-  const res = await fetch(url, { ...options, headers });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`Foundry ${res.status}: ${text}`);
-  return text ? JSON.parse(text) : {};
-}
-
-function extractAssistantText(messagesResponse) {
-  const data = messagesResponse.data || messagesResponse.messages || [];
-  const assistant = [...data].reverse().find(m => (m.role || "").toLowerCase() === "assistant");
-  if (!assistant) return "";
-
-  const parts = assistant.content || [];
-  let out = "";
-  for (const p of parts) {
-    if (p.type === "text") {
-      if (typeof p.text === "string") out += p.text + "\n";
-      else if (p.text && typeof p.text.value === "string") out += p.text.value + "\n";
-    }
+  const { json, raw } = await safeJson(res);
+  if (!res.ok) {
+    throw new Error(
+      `Token request failed (${res.status}). ${json?.error_description || raw || "No details"}`
+    );
   }
-  return out.trim();
-}
 
-module.exports = async function (context, req) {
-  try {
-    const { prompt, endpoint, agentId } = req.body || {};
-    if (!prompt) return { status: 400, body: { error: "Missing prompt" } };
-    if (!endpoint) return { status: 400, body: { error: "Missing endpoint" } };
-    if (!agentId) return { status: 400, body: { error: "Missing agentId" } };
-
-    const token = await getToken();
-
-    // 1) Create thread
-    const thread = await foundryFetch(endpoint, token, "/threads", {
-      method: "POST",
-      body: JSON.stringify({})
-    });
-    const threadId = thread.id || thread.threadId || thread.thread_id;
-    if (!threadId) throw new Error("Thread id not found");
-
-    // 2) Add message
-    await foundryFetch(endpoint, token, `/threads/${encodeURIComponent(threadId)}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ role: "user", content: [{ type: "text", text: prompt }] })
-    });
-
-    // 3) Create run (assistant_id is REQUIRED by the REST contract)
-    const run = await foundryFetch(endpoint, token, `/threads/${encodeURIComponent(threadId)}/runs`, {
-      method: "POST",
-      body: JSON.stringify({ assistant_id: agentId })
-    });
-    const runId = run.id || run.runId || run.run_id;
-    if (!runId) throw new Error("Run id not found");
-
-    // 4) Poll status
-    for (let i = 0; i < 60; i++) {
-      const s = await foundryFetch(endpoint, token, `/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}`, {
-        method: "GET"
-      });
-      const st = (s.status || s.state || "").toLowerCase();
-      if (["completed", "succeeded", "finished"].includes(st)) break;
-      if (["failed", "cancelled", "canceled", "error"].includes(st)) throw new Error(`Run ended: ${st}`);
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    // 5) Get assistant output
-    const msgs = await foundryFetch(endpoint, token, `/threads/${encodeURIComponent(threadId)}/messages`, { method: "GET" });
-    const text = extractAssistantText(msgs);
-    if (!text) throw new Error("No assistant text returned");
-
-    return { status: 200, body: { text } };
-  } catch (e) {
-    context.log.error(e);
-    return { status: 500, body: { error: String(e.message || e) } };
-  }
-};
+  if (!json?.access_token) {
